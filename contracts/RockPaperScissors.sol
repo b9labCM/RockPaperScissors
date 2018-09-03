@@ -12,8 +12,8 @@ contract RockPaperScissors is Stoppable {
         address player2;
         
         uint requiredAmount;
-
         bytes32 secretHand1;
+        bytes32 secretHand2;
         Hand Hand2;
 
         uint expiringTime;
@@ -41,6 +41,7 @@ contract RockPaperScissors is Stoppable {
         return true;
     }
     /* 1. Create Game  */
+    // to prevent the problem I can set the second player address here, so anyone except him can join this game. In this case there is no need to hash move2
     function createGame(uint _gameId, uint _requiredAmount, bytes32 _secretHand1, uint duration) external onlyIfRunning returns(bool success){
         require(games[_gameId].player1 == address(0), "The game already exist!");
         require(balances[msg.sender] >= _requiredAmount, "Insufficient funds to join the game");
@@ -62,36 +63,44 @@ contract RockPaperScissors is Stoppable {
      
         return true;
     }
+
     /* 2. Join game: another player can join the game created */
-    function joinGame(uint8 _gameId, Hand _move2) external  onlyIfRunning returns(bool success){
+    function joinGame(uint8 _gameId, bytes32 _secretHand2) external  onlyIfRunning returns(bool success){
         require(now <= games[_gameId].expiringTime, "");
         require(games[_gameId].player1 != address(0), "");
         require(msg.sender != games[_gameId].player1, "");
         require(balances[msg.sender] >= games[_gameId].requiredAmount, "");
-        require(_move2 != Hand.NONE, "You should play");
+        //require(_move2 != Hand.NONE, "You should play");
 
         balances[msg.sender] -= games[_gameId].requiredAmount;
 		
         emit LogJoinGame(_gameId, msg.sender);
 
         games[_gameId].player2 = msg.sender;
-        games[_gameId].Hand2 = _move2;
+        games[_gameId].secretHand2 = _secretHand2;
+       // games[_gameId].Hand2 = _move2;
         games[_gameId].balance += games[_gameId].requiredAmount;
 
         return true;
     }
 
     /* 3. Play game: compare the two hands and select a winner */
-    function playGame (uint _gameId, uint _password1, Hand _move1) external onlyIfRunning returns(address winnerAddr, bool success){
+    function playGame (uint _gameId, uint _password1, Hand _move1, uint _password2, Hand _move2) external onlyIfRunning 
+    returns(address winnerAddr, bool success){
         require(now <= games[_gameId].expiringTime, "");
         require(games[_gameId].player2 != address(0), "");
         require(_move1 != Hand.NONE, "You should choice");
-        require(games[_gameId].balance == games[_gameId].requiredAmount+games[_gameId].requiredAmount, ""); // use safemath
+        require(games[_gameId].balance == games[_gameId].requiredAmount + games[_gameId].requiredAmount, ""); // use safemath
 		
         bytes32 hash1 = computeHash(_password1, _move1);
-        require (hash1 == games[_gameId].secretHand1, "Player one had changed his move...");
+        require (hash1 == games[_gameId].secretHand1, "Player one has changed his move...");
+
+        bytes32 hash2 = computeHash(_password2, _move2);
+        require (hash2 == games[_gameId].secretHand2, "Player two has changed his move...");
 		
-        uint winner = compare(_move1, games[_gameId].Hand2);
+        //uint winner = compare(_move1, games[_gameId].Hand2);
+        uint winner = compare(_move1, _move2);
+
         if(winner == 1){
             balances[games[_gameId].player1] += 2*games[_gameId].requiredAmount;
             winnerAddr = games[_gameId].player1;
@@ -148,7 +157,7 @@ contract RockPaperScissors is Stoppable {
     /*UTILS*/ 
     //Helpers
     function computeHash(uint password, Hand move) public pure returns(bytes32){
-        return keccak256(abi.encodePacked(password,move));
+        return keccak256(abi.encodePacked(password, move));
     }
 
     //1-rock ; 2-paper ; 3-scissors
